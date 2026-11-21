@@ -1,4 +1,5 @@
-import 'device_verification_challenge.dart';
+import 'package:auth_notification_app/core/session/entities/session.dart';
+import 'package:auth_notification_app/features/auth/domain/entities/device_verification_challenge.dart';
 
 sealed class AuthResult {
   const AuthResult();
@@ -13,5 +14,9 @@ class DeviceVerificationRequired extends AuthResult {
 }
 
 class AuthSuccess extends AuthResult {
-  const AuthSuccess();
+  final Session session;
+
+  const AuthSuccess({
+    required this.session,
+  });
 }

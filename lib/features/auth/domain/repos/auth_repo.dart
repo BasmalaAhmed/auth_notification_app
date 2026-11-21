@@ -1,4 +1,4 @@
-import 'package:auth_notification_app/features/auth/domain/entities/auth_results.dart';
+import 'package:auth_notification_app/features/auth/domain/entities/auth_result.dart';
 import 'package:auth_notification_app/features/auth/domain/entities/login_credentials.dart';
 import 'package:auth_notification_app/features/auth/domain/entities/otp_challenge.dart';
 
