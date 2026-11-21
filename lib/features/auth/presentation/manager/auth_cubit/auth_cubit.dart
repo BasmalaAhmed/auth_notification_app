@@ -25,6 +25,37 @@ class AuthCubit extends Cubit<AuthState> {
     required this.sessionManager,
   }) : super(const AuthInitial());
 
+  Future<void> restoreSession() async {
+    if (_isProcessing) return;
+
+    _isProcessing = true;
+
+    emit(const AuthLoading());
+
+    try {
+      final session = sessionManager.currentSession;
+
+      if (session == null) {
+        emit(const AuthUnauthenticated());
+        return;
+      }
+
+      if (session.isExpired) {
+        await sessionManager.refreshSession();
+      }
+
+      if (isClosed) return;
+
+      emit(const AuthAuthenticated());
+    } catch (_) {
+      if (!isClosed) {
+        emit(const AuthUnauthenticated());
+      }
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
   Future<void> login(LoginCredentials credentials) async {
     if (_isProcessing) return;
 

@@ -69,6 +69,66 @@ void main() {
     authCubit.close();
   });
 
+  test('restores unauthenticated state when no session exists', () async {
+    when(() => mockSessionManager.currentSession).thenReturn(null);
+
+    await authCubit.restoreSession();
+
+    expect(authCubit.state, isA<AuthUnauthenticated>());
+
+    verifyNever(() => mockSessionManager.refreshSession());
+  });
+
+  test('restores authenticated state with a valid session', () async {
+    when(() => mockSessionManager.currentSession).thenReturn(session);
+
+    await authCubit.restoreSession();
+
+    expect(authCubit.state, isA<AuthAuthenticated>());
+
+    verifyNever(() => mockSessionManager.refreshSession());
+  });
+
+  test('refreshes expired session before authentication', () async {
+    final expiredSession = Session(
+      accessToken: 'expired_access_token',
+      refreshToken: 'mock_refresh_token_001',
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+    );
+
+    when(() => mockSessionManager.currentSession).thenReturn(expiredSession);
+
+    when(
+      () => mockSessionManager.refreshSession(),
+    ).thenAnswer((_) async => session);
+
+    await authCubit.restoreSession();
+
+    expect(authCubit.state, isA<AuthAuthenticated>());
+
+    verify(() => mockSessionManager.refreshSession()).called(1);
+  });
+
+  test('restores unauthenticated state when refresh fails', () async {
+    final expiredSession = Session(
+      accessToken: 'expired_access_token',
+      refreshToken: 'invalid_refresh_token',
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+    );
+
+    when(() => mockSessionManager.currentSession).thenReturn(expiredSession);
+
+    when(
+      () => mockSessionManager.refreshSession(),
+    ).thenThrow(Exception('Refresh failed'));
+
+    await authCubit.restoreSession();
+
+    expect(authCubit.state, isA<AuthUnauthenticated>());
+
+    verify(() => mockSessionManager.refreshSession()).called(1);
+  });
+
   test('starts with initial state', () {
     expect(authCubit.state, isA<AuthInitial>());
   });
