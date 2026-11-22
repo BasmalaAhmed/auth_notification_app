@@ -36,7 +36,6 @@ class AppDependencies {
   });
 
   static Future<AppDependencies> create() async {
-    // Security
     final secureStorageService = SecureStorageService();
 
  

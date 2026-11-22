@@ -97,7 +97,6 @@ class AuthCubit extends Cubit<AuthState> {
     try {
       AuthResult result;
 
-      // First: Verify OTP.
       try {
         result = await verifyOtpUseCase(
           challengeId: challenge.challengeId,
@@ -117,7 +116,6 @@ class AuthCubit extends Cubit<AuthState> {
 
       if (isClosed) return;
 
-      // Second: Handle verification result.
       if (result is DeviceVerificationRequired) {
         _deviceChallenge = result.challenge;
         _otpChallenge = null;
@@ -154,7 +152,6 @@ class AuthCubit extends Cubit<AuthState> {
     try {
       AuthResult result;
 
-      // First: Verify device code.
       try {
         result = await verifyDeviceUseCase(
           challengeId: challenge.challengeId,
@@ -174,7 +171,6 @@ class AuthCubit extends Cubit<AuthState> {
 
       if (isClosed) return;
 
-      // Second: Handle successful verification.
       if (result is AuthSuccess) {
         try {
           await _completeAuthentication(result);
@@ -202,5 +198,29 @@ class AuthCubit extends Cubit<AuthState> {
     _deviceChallenge = null;
 
     emit(const AuthAuthenticated());
+  }
+
+  Future<void> logout() async {
+    if (_isProcessing) return;
+
+    _isProcessing = true;
+    emit(const AuthLoading());
+
+    try {
+      await sessionManager.logout();
+
+      _otpChallenge = null;
+      _deviceChallenge = null;
+
+      if (!isClosed) {
+        emit(const AuthUnauthenticated());
+      }
+    } catch (_) {
+      if (!isClosed) {
+        emit(const AuthFailure('Logout failed. Please try again.'));
+      }
+    } finally {
+      _isProcessing = false;
+    }
   }
 }
