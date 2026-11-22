@@ -11,15 +11,14 @@ class ApprovalRequestCoordinator {
   final ApprovalCubit approvalCubit;
   final PendingApprovalManager pendingApprovalManager;
 
-  final void Function(ApprovalRequest request) onRequestReady;
+  final Future<void> Function(ApprovalRequest request) onRequestReady;
 
   late final StreamSubscription<AuthState> _authSubscription;
 
   bool _isProcessing = false;
   bool _isDisposed = false;
+  String? _activeRequestId;
   int _authStateVersion = 0;
-
-  final Set<String> _handledRequestIds = {};
 
   ApprovalRequestCoordinator({
     required this.authCubit,
@@ -37,7 +36,10 @@ class ApprovalRequestCoordinator {
   bool handleLink(Uri uri) {
     if (_isDisposed) return false;
 
-    final accepted = pendingApprovalManager.handleLink(uri);
+    final accepted = pendingApprovalManager.handleLink(
+      uri,
+      ignoredRequestId: _activeRequestId,
+    );
 
     if (accepted) {
       _processPendingRequest();
@@ -73,11 +75,6 @@ class ApprovalRequestCoordinator {
 
         final authVersion = _authStateVersion;
 
-        if (_handledRequestIds.contains(requestId)) {
-          pendingApprovalManager.clearPendingRequest();
-          continue;
-        }
-
         final request = await approvalCubit.fetchRequest(requestId: requestId);
 
         if (authVersion != _authStateVersion) {
@@ -101,9 +98,17 @@ class ApprovalRequestCoordinator {
 
         pendingApprovalManager.clearPendingRequest();
 
-        _handledRequestIds.add(requestId);
+        _activeRequestId = requestId;
 
-        onRequestReady(request);
+        try {
+          await onRequestReady(request);
+        } finally {
+          if (_activeRequestId == requestId) {
+            _activeRequestId = null;
+          }
+
+          approvalCubit.reset();
+        }
       }
     } finally {
       _isProcessing = false;

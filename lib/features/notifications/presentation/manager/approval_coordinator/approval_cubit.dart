@@ -7,37 +7,48 @@ class ApprovalCubit extends Cubit<ApprovalState> {
   final GetApprovalRequestUseCase getApprovalRequestUseCase;
 
   bool _isProcessing = false;
+  int _requestVersion = 0;
 
   ApprovalCubit({required this.getApprovalRequestUseCase})
     : super(const ApprovalInitial());
 
   Future<ApprovalRequest?> fetchRequest({required String requestId}) async {
+    if (isClosed || _isProcessing) return null;
     if (_isProcessing) return null;
 
     _isProcessing = true;
+    final requestVersion = ++_requestVersion;
 
     emit(const ApprovalLoading());
 
     try {
       final request = await getApprovalRequestUseCase(requestId: requestId);
 
-      if (isClosed) return null;
+      if (isClosed || requestVersion != _requestVersion) {
+        return null;
+      }
 
       emit(ApprovalLoaded(request));
 
       return request;
     } catch (_) {
-      if (!isClosed) {
+      if (!isClosed && requestVersion == _requestVersion) {
         emit(const ApprovalFailure('Failed to load approval request.'));
       }
+
+      return null;
     } finally {
-      _isProcessing = false;
+      if (requestVersion == _requestVersion) {
+        _isProcessing = false;
+      }
     }
-    return null;
   }
 
   void reset() {
-    if (_isProcessing) return;
+    if (isClosed) return;
+
+    _requestVersion++;
+    _isProcessing = false;
 
     emit(const ApprovalInitial());
   }

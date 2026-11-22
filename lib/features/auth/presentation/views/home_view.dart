@@ -6,10 +6,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 class HomeView extends StatelessWidget {
   final SessionManager sessionManager;
+  final bool Function(Uri uri) onDeepLink;
 
   const HomeView({
     super.key,
     required this.sessionManager,
+    required this.onDeepLink,
   });
 
   static const Color primaryColor = Color(0xFF1E293B);
@@ -26,25 +28,15 @@ class HomeView extends StatelessWidget {
         elevation: 0,
         title: const Text(
           'Dashboard',
-          style: TextStyle(
-            color: primaryColor,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
         ),
         actions: [
           BlocBuilder<AuthCubit, AuthState>(
             builder: (context, state) {
-              final isLoading = state is AuthLoading;
-
               return IconButton(
-                onPressed: isLoading
-                    ? null
-                    : () => context.read<AuthCubit>().logout(),
+                onPressed: () => context.read<AuthCubit>().logout(),
                 tooltip: 'Logout',
-                icon: const Icon(
-                  Icons.logout_rounded,
-                  color: primaryColor,
-                ),
+                icon: const Icon(Icons.logout_rounded, color: primaryColor),
               );
             },
           ),
@@ -114,7 +106,7 @@ class HomeView extends StatelessWidget {
 
               const SizedBox(height: 28),
 
-              _buildNotificationsPlaceholder(),
+              _buildMockDeepLinkButton(context),
             ],
           ),
         ),
@@ -133,11 +125,7 @@ class HomeView extends StatelessWidget {
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.waving_hand_rounded,
-            color: Color(0xFFFBBF24),
-            size: 32,
-          ),
+          Icon(Icons.waving_hand_rounded, color: Color(0xFFFBBF24), size: 32),
           SizedBox(height: 16),
           Text(
             'Welcome Back!',
@@ -150,10 +138,7 @@ class HomeView extends StatelessWidget {
           SizedBox(height: 8),
           Text(
             "You're successfully authenticated.",
-            style: TextStyle(
-              color: Color(0xFFCBD5E1),
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 14),
           ),
         ],
       ),
@@ -191,10 +176,7 @@ class HomeView extends StatelessWidget {
               children: [
                 Text(
                   'Authentication Status',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                 ),
                 SizedBox(height: 4),
                 Text(
@@ -218,15 +200,10 @@ class HomeView extends StatelessWidget {
   }
 
   Widget _buildStatusBadge(String label, bool isActive) {
-    final color = isActive
-        ? accentColor
-        : const Color(0xFFDC2626);
+    final color = isActive ? accentColor : const Color(0xFFDC2626);
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
@@ -255,11 +232,7 @@ class HomeView extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: accentColor,
-            size: 24,
-          ),
+          Icon(icon, color: accentColor, size: 24),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -289,43 +262,30 @@ class HomeView extends StatelessWidget {
     );
   }
 
-  Widget _buildNotificationsPlaceholder() {
-    return Container(
+  Widget _buildMockDeepLinkButton(BuildContext context) {
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
+      child: ElevatedButton.icon(
+        onPressed: () {
+          final accepted = onDeepLink(
+            Uri.parse('myapp://approval/request_001'),
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                accepted ? 'Approval link received.' : 'Invalid approval link.',
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.notifications_active_outlined),
+        label: const Text('Simulate Approval Notification'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accentColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
         ),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.notifications_none_rounded,
-            color: accentColor,
-            size: 28,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'Notifications',
-            style: TextStyle(
-              color: primaryColor,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            'Your notifications will appear here.',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontSize: 13,
-            ),
-          ),
-        ],
       ),
     );
   }

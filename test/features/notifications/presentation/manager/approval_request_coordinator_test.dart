@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:auth_notification_app/features/auth/domain/entities/device_verification_challenge.dart';
+import 'package:auth_notification_app/features/auth/domain/entities/otp_challenge.dart';
 import 'package:auth_notification_app/features/auth/presentation/manager/auth_cubit/auth_cubit.dart';
 import 'package:auth_notification_app/features/auth/presentation/manager/auth_cubit/auth_state.dart';
 import 'package:auth_notification_app/features/notifications/domain/entities/approval_request.dart';
@@ -13,6 +15,7 @@ class MockAuthCubit extends Mock implements AuthCubit {}
 
 class MockApprovalCubit extends Mock implements ApprovalCubit {}
 
+
 void main() {
   late MockAuthCubit authCubit;
   late MockApprovalCubit approvalCubit;
@@ -22,6 +25,7 @@ void main() {
 
   late AuthState currentAuthState;
   late List<ApprovalRequest> readyRequests;
+  late Completer<void>? screenCloseCompleter;
 
   setUp(() {
     authCubit = MockAuthCubit();
@@ -36,12 +40,15 @@ void main() {
     when(() => authCubit.state).thenAnswer((_) => currentAuthState);
 
     when(() => authCubit.stream).thenAnswer((_) => authController.stream);
-
+    screenCloseCompleter = null;
     coordinator = ApprovalRequestCoordinator(
       authCubit: authCubit,
       approvalCubit: approvalCubit,
       pendingApprovalManager: pendingApprovalManager,
-      onRequestReady: readyRequests.add,
+      onRequestReady: (request) async {
+        readyRequests.add(request);
+        await screenCloseCompleter?.future;
+      },
     );
   });
 
@@ -63,6 +70,90 @@ void main() {
       verifyNever(
         () => approvalCubit.fetchRequest(requestId: any(named: 'requestId')),
       );
+    });
+
+    test('keeps pending request during OTP verification', () async {
+      const request = ApprovalRequest(
+        requestId: 'request_001',
+        title: 'New Shop Approval',
+        description: 'A new shop is waiting for your approval.',
+      );
+
+      when(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).thenAnswer((_) async => request);
+
+      currentAuthState = const AuthOtpRequired(
+        OtpChallenge(
+          challengeId: 'otp_001',
+          maskedDestination: 'u***@example.com',
+        ),
+      );
+
+      coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(pendingApprovalManager.pendingRequestId, 'request_001');
+      expect(readyRequests, isEmpty);
+
+      verifyNever(
+        () => approvalCubit.fetchRequest(requestId: any(named: 'requestId')),
+      );
+
+      currentAuthState = const AuthAuthenticated();
+      authController.add(currentAuthState);
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(readyRequests, [request]);
+      expect(pendingApprovalManager.hasPendingRequest, isFalse);
+
+      verify(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).called(1);
+    });
+
+    test('keeps pending request during device verification', () async {
+      const request = ApprovalRequest(
+        requestId: 'request_001',
+        title: 'New Shop Approval',
+        description: 'A new shop is waiting for your approval.',
+      );
+
+      when(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).thenAnswer((_) async => request);
+
+      currentAuthState = const AuthDeviceVerificationRequired(
+        DeviceVerificationChallenge(
+          challengeId: 'device_001',
+          deviceName: 'Windows Desktop',
+        ),
+      );
+
+      coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(pendingApprovalManager.pendingRequestId, 'request_001');
+      expect(readyRequests, isEmpty);
+
+      verifyNever(
+        () => approvalCubit.fetchRequest(requestId: any(named: 'requestId')),
+      );
+
+      currentAuthState = const AuthAuthenticated();
+      authController.add(currentAuthState);
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(readyRequests, [request]);
+      expect(pendingApprovalManager.hasPendingRequest, isFalse);
+
+      verify(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).called(1);
     });
 
     test('fetches pending request when user becomes authenticated', () async {
@@ -124,35 +215,38 @@ void main() {
       ).called(1);
     });
 
-    test('does not process an already handled request again', () async {
-      const request = ApprovalRequest(
-        requestId: 'request_001',
-        title: 'New Shop Approval',
-        description: 'A new shop is waiting for your approval.',
-      );
+    test(
+      'allows the same request again after the previous screen closes',
+      () async {
+        const request = ApprovalRequest(
+          requestId: 'request_001',
+          title: 'New Shop Approval',
+          description: 'A new shop is waiting for your approval.',
+        );
 
-      when(
-        () => approvalCubit.fetchRequest(requestId: 'request_001'),
-      ).thenAnswer((_) async => request);
+        when(
+          () => approvalCubit.fetchRequest(requestId: 'request_001'),
+        ).thenAnswer((_) async => request);
 
-      coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+        coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
 
-      currentAuthState = const AuthAuthenticated();
-      authController.add(currentAuthState);
+        currentAuthState = const AuthAuthenticated();
+        authController.add(currentAuthState);
 
-      await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
 
-      coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+        coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
 
-      await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
 
-      expect(readyRequests, [request]);
-      expect(pendingApprovalManager.hasPendingRequest, isFalse);
+        expect(readyRequests, [request, request]);
+        expect(pendingApprovalManager.hasPendingRequest, isFalse);
 
-      verify(
-        () => approvalCubit.fetchRequest(requestId: 'request_001'),
-      ).called(1);
-    });
+        verify(
+          () => approvalCubit.fetchRequest(requestId: 'request_001'),
+        ).called(2);
+      },
+    );
 
     test(
       'processes the latest request when a new link arrives during fetch',
@@ -334,5 +428,113 @@ void main() {
         () => approvalCubit.fetchRequest(requestId: any(named: 'requestId')),
       );
     });
+    test(
+      'ignores duplicate notification while request screen is open',
+      () async {
+        final completer = Completer<ApprovalRequest?>();
+
+        screenCloseCompleter = Completer<void>();
+
+        const request = ApprovalRequest(
+          requestId: 'request_001',
+          title: 'New Shop Approval',
+          description: 'A new shop is waiting for your approval.',
+        );
+
+        when(
+          () => approvalCubit.fetchRequest(requestId: 'request_001'),
+        ).thenAnswer((_) => completer.future);
+
+        coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+
+        currentAuthState = const AuthAuthenticated();
+        authController.add(currentAuthState);
+
+        await Future<void>.delayed(Duration.zero);
+
+        completer.complete(request);
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(readyRequests, [request]);
+
+        final accepted = coordinator.handleLink(
+          Uri.parse('myapp://approval/request_001'),
+        );
+
+        expect(accepted, isFalse);
+        expect(readyRequests, [request]);
+
+        screenCloseCompleter!.complete();
+
+        await Future<void>.delayed(Duration.zero);
+
+        verify(
+          () => approvalCubit.fetchRequest(requestId: 'request_001'),
+        ).called(1);
+      },
+    );
+    test('processes a different request after current screen closes', () async {
+      final firstCompleter = Completer<ApprovalRequest?>();
+      final secondCompleter = Completer<ApprovalRequest?>();
+
+      screenCloseCompleter = Completer<void>();
+
+      const firstRequest = ApprovalRequest(
+        requestId: 'request_001',
+        title: 'First Request',
+        description: 'First description',
+      );
+
+      const secondRequest = ApprovalRequest(
+        requestId: 'request_002',
+        title: 'Second Request',
+        description: 'Second description',
+      );
+
+      when(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).thenAnswer((_) => firstCompleter.future);
+
+      when(
+        () => approvalCubit.fetchRequest(requestId: 'request_002'),
+      ).thenAnswer((_) => secondCompleter.future);
+
+      coordinator.handleLink(Uri.parse('myapp://approval/request_001'));
+
+      currentAuthState = const AuthAuthenticated();
+      authController.add(currentAuthState);
+
+      await Future<void>.delayed(Duration.zero);
+
+      firstCompleter.complete(firstRequest);
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(readyRequests, [firstRequest]);
+
+      coordinator.handleLink(Uri.parse('myapp://approval/request_002'));
+
+      screenCloseCompleter!.complete();
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(readyRequests, [firstRequest]);
+
+      secondCompleter.complete(secondRequest);
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(readyRequests, [firstRequest, secondRequest]);
+
+      verify(
+        () => approvalCubit.fetchRequest(requestId: 'request_001'),
+      ).called(1);
+
+      verify(
+        () => approvalCubit.fetchRequest(requestId: 'request_002'),
+      ).called(1);
+    });
   });
 }
+

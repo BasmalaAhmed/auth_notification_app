@@ -5,7 +5,7 @@ class PendingApprovalManager {
 
   bool get hasPendingRequest => _pendingRequestId != null;
 
-  bool handleLink(Uri uri) {
+  bool handleLink(Uri uri, {String? ignoredRequestId}) {
     if (uri.scheme != 'myapp' || uri.host != 'approval') {
       return false;
     }
@@ -17,6 +17,10 @@ class PendingApprovalManager {
     final requestId = uri.pathSegments.first;
 
     if (requestId.isEmpty) {
+      return false;
+    }
+
+    if (requestId == ignoredRequestId) {
       return false;
     }
 

@@ -38,35 +38,73 @@ void main() {
     });
 
     test('rejects a link without a request ID', () {
+      final result = manager.handleLink(Uri.parse('myapp://approval'));
+
+      expect(result, isFalse);
+      expect(manager.hasPendingRequest, isFalse);
+    });
+
+    test(
+      'does not lose the pending request when the same link is received again',
+      () {
+        manager.handleLink(Uri.parse('myapp://approval/request_001'));
+
+        manager.handleLink(Uri.parse('myapp://approval/request_001'));
+
+        expect(manager.pendingRequestId, 'request_001');
+      },
+    );
+
+    test('clears the pending request', () {
+      manager.handleLink(Uri.parse('myapp://approval/request_001'));
+
+      manager.clearPendingRequest();
+
+      expect(manager.hasPendingRequest, isFalse);
+      expect(manager.pendingRequestId, isNull);
+    });
+
+    test('replaces pending request when a new valid link arrives', () {
+      manager.handleLink(Uri.parse('myapp://approval/request_001'));
+
       final result = manager.handleLink(
-        Uri.parse('myapp://approval'),
+        Uri.parse('myapp://approval/request_002'),
+      );
+
+      expect(result, isTrue);
+      expect(manager.pendingRequestId, 'request_002');
+    });
+
+    test('rejects links with additional path segments', () {
+      final result = manager.handleLink(
+        Uri.parse('myapp://approval/request_001/extra'),
       );
 
       expect(result, isFalse);
       expect(manager.hasPendingRequest, isFalse);
     });
 
-    test('does not lose the pending request when the same link is received again', () {
-      manager.handleLink(
-        Uri.parse('myapp://approval/request_001'),
+    test('preserves pending request when an invalid link is received', () {
+      manager.handleLink(Uri.parse('myapp://approval/request_001'));
+
+      final result = manager.handleLink(
+        Uri.parse('https://approval/request_002'),
       );
 
-      manager.handleLink(
-        Uri.parse('myapp://approval/request_001'),
-      );
-
+      expect(result, isFalse);
+      expect(manager.hasPendingRequest, isTrue);
       expect(manager.pendingRequestId, 'request_001');
     });
 
-    test('clears the pending request', () {
-      manager.handleLink(
-        Uri.parse('myapp://approval/request_001'),
+    test('uses only request ID and ignores query parameters', () {
+      final result = manager.handleLink(
+        Uri.parse(
+          'myapp://approval/request_001?role=admin&permission=approved',
+        ),
       );
 
-      manager.clearPendingRequest();
-
-      expect(manager.hasPendingRequest, isFalse);
-      expect(manager.pendingRequestId, isNull);
+      expect(result, isTrue);
+      expect(manager.pendingRequestId, 'request_001');
     });
   });
 }

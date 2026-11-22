@@ -186,6 +186,51 @@ void main() {
     verify(() => mockRepo.clearSession()).called(1);
   });
 
+  test(
+    'does not emit refresh failure when logout happens during failed refresh',
+    () async {
+      final completer = Completer<Session>();
+      final refreshError = Exception('Refresh failed');
+
+      final expiredSession = Session(
+        accessToken: 'old_access',
+        refreshToken: 'old_refresh',
+        expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+
+      when(() => mockRepo.getSession()).thenAnswer((_) async => expiredSession);
+
+      when(() => mockRepo.clearSession()).thenAnswer((_) async {});
+
+      when(
+        () => mockRefreshRepo.refreshSession(refreshToken: 'old_refresh'),
+      ).thenAnswer((_) => completer.future);
+
+      await sessionManager.initialize();
+
+      var failureEventCount = 0;
+
+      final subscription = sessionManager.onRefreshFailure.listen((_) {
+        failureEventCount++;
+      });
+
+      final refreshFuture = sessionManager.refreshSession();
+
+      await sessionManager.logout();
+
+      completer.completeError(refreshError);
+
+      await expectLater(refreshFuture, throwsA(same(refreshError)));
+
+      expect(sessionManager.currentSession, isNull);
+      expect(failureEventCount, 0);
+
+      await subscription.cancel();
+
+      verify(() => mockRepo.clearSession()).called(1);
+    },
+  );
+
   test('clears session if logout happens during session saving', () async {
     final saveCompleter = Completer<void>();
     final saveStarted = Completer<void>();
@@ -332,6 +377,84 @@ void main() {
       verify(() => mockRepo.saveSession(newLoginSession)).called(1);
 
       verifyNever(() => mockRepo.clearSession());
+    },
+  );
+  test('emits refresh failure event when refresh fails', () async {
+    final expiredSession = Session(
+      accessToken: 'old_access',
+      refreshToken: 'invalid_refresh',
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+    );
+
+    when(() => mockRepo.getSession()).thenAnswer((_) async => expiredSession);
+
+    when(
+      () => mockRefreshRepo.refreshSession(refreshToken: 'invalid_refresh'),
+    ).thenThrow(Exception('Invalid refresh token'));
+
+    when(() => mockRepo.clearSession()).thenAnswer((_) async {});
+
+    await sessionManager.initialize();
+
+    final failureEvent = sessionManager.onRefreshFailure.first;
+
+    await expectLater(
+      sessionManager.refreshSession(),
+      throwsA(isA<Exception>()),
+    );
+
+    await failureEvent;
+
+    expect(sessionManager.currentSession, isNull);
+
+    verify(() => mockRepo.clearSession()).called(1);
+  });
+  test(
+    'emits refresh failure event even when clearing session fails',
+    () async {
+      final expiredSession = Session(
+        accessToken: 'old_access',
+        refreshToken: 'invalid_refresh',
+        expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+
+      final refreshError = Exception('Refresh failed');
+      final storageError = Exception('Storage deletion failed');
+
+      when(() => mockRepo.getSession()).thenAnswer((_) async => expiredSession);
+
+      when(
+        () => mockRefreshRepo.refreshSession(refreshToken: 'invalid_refresh'),
+      ).thenThrow(refreshError);
+
+      when(() => mockRepo.clearSession()).thenThrow(storageError);
+
+      await sessionManager.initialize();
+
+      var failureEventCount = 0;
+
+      final failureEventCompleter = Completer<void>();
+
+      final subscription = sessionManager.onRefreshFailure.listen((_) {
+        failureEventCount++;
+
+        if (!failureEventCompleter.isCompleted) {
+          failureEventCompleter.complete();
+        }
+      });
+
+      await expectLater(
+        sessionManager.refreshSession(),
+        throwsA(same(refreshError)),
+      );
+
+      await failureEventCompleter.future;
+
+      expect(sessionManager.currentSession, isNull);
+      expect(sessionManager.hasSession, isFalse);
+      expect(failureEventCount, 1);
+
+      await subscription.cancel();
     },
   );
 }

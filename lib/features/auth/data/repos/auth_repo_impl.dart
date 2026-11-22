@@ -43,6 +43,14 @@ class AuthRepoImpl implements AuthRepo {
           deviceName: response['device_name'] as String,
         ),
       );
+    } else if (status == 'success') {
+      return AuthSuccess(
+        session: Session(
+          accessToken: response['access_token'] as String,
+          refreshToken: response['refresh_token'] as String,
+          expiresAt: DateTime.parse(response['expires_at'] as String),
+        ),
+      );
     }
 
     throw FormatException('Unknown authentication status: $status');

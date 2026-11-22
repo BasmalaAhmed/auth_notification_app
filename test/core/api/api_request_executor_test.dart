@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -32,12 +34,10 @@ void main() {
 
   setUp(() async {
     mockSessionRepo = MockSessionRepo();
+    when(() => mockSessionRepo.clearSession()).thenAnswer((_) async {});
     mockRefreshRepo = MockSessionRefreshRepo();
 
-    sessionManager = SessionManager(
-      mockSessionRepo,
-      mockRefreshRepo,
-    );
+    sessionManager = SessionManager(mockSessionRepo, mockRefreshRepo);
 
     executor = ApiRequestExecutor(sessionManager);
 
@@ -69,9 +69,7 @@ void main() {
     var attempts = 0;
 
     when(
-      () => mockRefreshRepo.refreshSession(
-        refreshToken: 'old_refresh',
-      ),
+      () => mockRefreshRepo.refreshSession(refreshToken: 'old_refresh'),
     ).thenAnswer((_) async => refreshedSession);
 
     when(
@@ -85,10 +83,7 @@ void main() {
         if (attempts == 1) {
           expect(accessToken, 'old_access');
 
-          throw const ApiException(
-            statusCode: 401,
-            message: 'Unauthorized',
-          );
+          throw const ApiException(statusCode: 401, message: 'Unauthorized');
         }
 
         expect(accessToken, 'new_access');
@@ -102,9 +97,7 @@ void main() {
     expect(sessionManager.currentSession, refreshedSession);
 
     verify(
-      () => mockRefreshRepo.refreshSession(
-        refreshToken: 'old_refresh',
-      ),
+      () => mockRefreshRepo.refreshSession(refreshToken: 'old_refresh'),
     ).called(1);
   });
 
@@ -112,10 +105,7 @@ void main() {
     await expectLater(
       executor.execute<String>(
         request: (_) async {
-          throw const ApiException(
-            statusCode: 403,
-            message: 'Forbidden',
-          );
+          throw const ApiException(statusCode: 403, message: 'Forbidden');
         },
       ),
       throwsA(
@@ -138,9 +128,7 @@ void main() {
     var attempts = 0;
 
     when(
-      () => mockRefreshRepo.refreshSession(
-        refreshToken: 'old_refresh',
-      ),
+      () => mockRefreshRepo.refreshSession(refreshToken: 'old_refresh'),
     ).thenAnswer((_) async => refreshedSession);
 
     when(
@@ -152,10 +140,7 @@ void main() {
         request: (_) async {
           attempts++;
 
-          throw const ApiException(
-            statusCode: 401,
-            message: 'Unauthorized',
-          );
+          throw const ApiException(statusCode: 401, message: 'Unauthorized');
         },
       ),
       throwsA(isA<ApiException>()),
@@ -164,9 +149,145 @@ void main() {
     expect(attempts, 2);
 
     verify(
-      () => mockRefreshRepo.refreshSession(
-        refreshToken: 'old_refresh',
-      ),
+      () => mockRefreshRepo.refreshSession(refreshToken: 'old_refresh'),
     ).called(1);
   });
+
+  test('throws 401 without executing request when no session exists', () async {
+    await sessionManager.logout();
+
+    var requestExecuted = false;
+
+    await expectLater(
+      executor.execute<String>(
+        request: (_) async {
+          requestExecuted = true;
+          return 'success';
+        },
+      ),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
+    );
+
+    expect(requestExecuted, isFalse);
+
+    verifyNever(
+      () => mockRefreshRepo.refreshSession(
+        refreshToken: any(named: 'refreshToken'),
+      ),
+    );
+  });
+  test('ends session and does not retry request when refresh fails', () async {
+    var requestAttempts = 0;
+
+    when(
+      () => mockRefreshRepo.refreshSession(
+        refreshToken: initialSession.refreshToken,
+      ),
+    ).thenThrow(Exception('Refresh failed'));
+
+    await expectLater(
+      executor.execute<String>(
+        request: (_) async {
+          requestAttempts++;
+
+          throw const ApiException(statusCode: 401, message: 'Unauthorized');
+        },
+      ),
+      throwsA(isA<Exception>()),
+    );
+
+    expect(requestAttempts, 1);
+    expect(sessionManager.currentSession, isNull);
+
+    verify(
+      () => mockRefreshRepo.refreshSession(
+        refreshToken: initialSession.refreshToken,
+      ),
+    ).called(1);
+
+    verify(() => mockSessionRepo.clearSession()).called(1);
+  });
+
+  test('uses one refresh for 10 concurrent requests and retries each once', () async {
+  const requestCount = 10;
+
+  final refreshCompleter = Completer<Session>();
+  final allRequestsStarted = Completer<void>();
+
+  var refreshCalls = 0;
+  var initialAttempts = 0;
+
+  when(
+    () => mockRefreshRepo.refreshSession(
+      refreshToken: initialSession.refreshToken,
+    ),
+  ).thenAnswer((_) {
+    refreshCalls++;
+    return refreshCompleter.future;
+  });
+
+  when(
+    () => mockSessionRepo.saveSession(refreshedSession),
+  ).thenAnswer((_) async {});
+
+  final requests = List.generate(requestCount, (index) async {
+    var attempts = 0;
+
+    return executor.execute<String>(
+      request: (accessToken) async {
+        attempts++;
+
+        if (attempts == 1) {
+          initialAttempts++;
+
+          if (initialAttempts == requestCount) {
+            allRequestsStarted.complete();
+          }
+
+          expect(accessToken, 'old_access');
+
+          throw const ApiException(
+            statusCode: 401,
+            message: 'Unauthorized',
+          );
+        }
+
+        expect(attempts, 2);
+        expect(accessToken, 'new_access');
+
+        return 'success_$index';
+      },
+    );
+  });
+
+  await allRequestsStarted.future;
+
+  expect(refreshCalls, 1);
+
+  refreshCompleter.complete(refreshedSession);
+
+  final results = await Future.wait(requests);
+
+  expect(results.length, requestCount);
+  expect(
+    results,
+    List.generate(requestCount, (index) => 'success_$index'),
+  );
+
+  expect(refreshCalls, 1);
+  expect(initialAttempts, requestCount);
+  expect(sessionManager.currentSession, refreshedSession);
+
+  verify(
+    () => mockRefreshRepo.refreshSession(
+      refreshToken: initialSession.refreshToken,
+    ),
+  ).called(1);
+});
 }

@@ -69,11 +69,72 @@ void main() {
   });
 
   test('clears session from secure storage', () async {
+    when(
+      () => mockStorage.delete(key: 'user_session'),
+    ).thenAnswer((_) async {});
+
+    await repo.clearSession();
+
+    verify(() => mockStorage.delete(key: 'user_session')).called(1);
+  });
+
+  test('clears session when stored data is invalid JSON', () async {
+    when(
+      () => mockStorage.read(key: 'user_session'),
+    ).thenAnswer((_) async => 'invalid_json');
+
+    when(
+      () => mockStorage.delete(key: 'user_session'),
+    ).thenAnswer((_) async {});
+
+    final result = await repo.getSession();
+
+    expect(result, isNull);
+
+    verify(() => mockStorage.delete(key: 'user_session')).called(1);
+  });
+
+  test('clears session when required fields are missing', () async {
+  final storedData = jsonEncode({
+    'access_token': 'access_123',
+    'expires_at': session.expiresAt.toIso8601String(),
+  });
+
+  when(
+    () => mockStorage.read(key: 'user_session'),
+  ).thenAnswer((_) async => storedData);
+
   when(
     () => mockStorage.delete(key: 'user_session'),
   ).thenAnswer((_) async {});
 
-  await repo.clearSession();
+  final result = await repo.getSession();
+
+  expect(result, isNull);
+
+  verify(
+    () => mockStorage.delete(key: 'user_session'),
+  ).called(1);
+});
+
+test('clears session when stored fields have invalid types', () async {
+  final storedData = jsonEncode({
+    'access_token': 12345,
+    'refresh_token': 'refresh_123',
+    'expires_at': session.expiresAt.toIso8601String(),
+  });
+
+  when(
+    () => mockStorage.read(key: 'user_session'),
+  ).thenAnswer((_) async => storedData);
+
+  when(
+    () => mockStorage.delete(key: 'user_session'),
+  ).thenAnswer((_) async {});
+
+  final result = await repo.getSession();
+
+  expect(result, isNull);
 
   verify(
     () => mockStorage.delete(key: 'user_session'),

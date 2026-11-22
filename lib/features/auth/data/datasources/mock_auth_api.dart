@@ -1,4 +1,6 @@
 class MockAuthApi {
+  bool isCurrentDeviceNew = true;
+
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -25,8 +27,19 @@ class MockAuthApi {
       throw Exception('Invalid OTP challenge');
     }
 
-    if (code != '123456') {
+    if (code != '123456' && code != '111111') {
       throw Exception('Invalid OTP code');
+    }
+
+    if (!isCurrentDeviceNew || code == '111111') {
+      return {
+        'status': 'success',
+        'access_token': 'mock_access_token_001',
+        'refresh_token': 'mock_refresh_token_001',
+        'expires_at': DateTime.now()
+            .add(const Duration(minutes: 15))
+            .toIso8601String(),
+      };
     }
 
     return {
@@ -49,6 +62,8 @@ class MockAuthApi {
     if (code != '654321') {
       throw Exception('Invalid device verification code');
     }
+
+    isCurrentDeviceNew = false;
 
     return {
       'access_token': 'mock_access_token_001',

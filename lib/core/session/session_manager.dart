@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auth_notification_app/core/session/entities/session.dart';
 import 'package:auth_notification_app/core/session/repos/session_refresh_repo.dart';
 import 'package:auth_notification_app/core/session/repos/session_repo.dart';
@@ -22,6 +24,11 @@ class SessionManager {
 
     return !session.isExpired;
   }
+
+  final StreamController<void> _refreshFailureController =
+      StreamController<void>.broadcast();
+
+  Stream<void> get onRefreshFailure => _refreshFailureController.stream;
 
   Future<void> _enqueueStorageOperation(Future<void> Function() operation) {
     final nextOperation = _storageQueue.then((_) => operation());
@@ -131,12 +138,17 @@ class SessionManager {
       _currentSession = newSession;
 
       return newSession;
-    } catch (_) {
+    } catch (refreshError, stackTrace) {
       if (sessionVersion == _sessionVersion) {
-        await logout();
+        try {
+          await logout();
+        } catch (_) {
+        } finally {
+          _refreshFailureController.add(null);
+        }
       }
 
-      rethrow;
+      Error.throwWithStackTrace(refreshError, stackTrace);
     } finally {
       if (operationVersion == _refreshOperationVersion) {
         _refreshFuture = null;

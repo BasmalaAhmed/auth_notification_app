@@ -27,7 +27,7 @@ void main() {
   late MockVerifyOtpUseCase mockVerifyOtpUseCase;
   late MockVerifyDeviceUseCase mockVerifyDeviceUseCase;
   late MockSessionManager mockSessionManager;
-
+  late StreamController<void> refreshFailureController;
   late AuthCubit authCubit;
 
   final credentials = const LoginCredentials(
@@ -56,7 +56,10 @@ void main() {
     mockVerifyOtpUseCase = MockVerifyOtpUseCase();
     mockVerifyDeviceUseCase = MockVerifyDeviceUseCase();
     mockSessionManager = MockSessionManager();
-
+    refreshFailureController = StreamController<void>.broadcast();
+    when(
+      () => mockSessionManager.onRefreshFailure,
+    ).thenAnswer((_) => refreshFailureController.stream);
     authCubit = AuthCubit(
       loginUseCase: mockLoginUseCase,
       verifyOtpUseCase: mockVerifyOtpUseCase,
@@ -65,8 +68,9 @@ void main() {
     );
   });
 
-  tearDown(() {
-    authCubit.close();
+  tearDown(() async {
+    await authCubit.close();
+    await refreshFailureController.close();
   });
 
   test('restores unauthenticated state when no session exists', () async {
@@ -396,4 +400,153 @@ void main() {
 
     expect(authCubit.isClosed, isTrue);
   });
+
+  test(
+    'allows successful device verification after old refresh failure',
+    () async {
+      final completer = Completer<AuthResult>();
+
+      when(
+        () => mockLoginUseCase(credentials),
+      ).thenAnswer((_) async => otpChallenge);
+
+      when(
+        () =>
+            mockVerifyOtpUseCase(challengeId: 'challenge_001', code: '123456'),
+      ).thenAnswer(
+        (_) async => DeviceVerificationRequired(challenge: deviceChallenge),
+      );
+
+      when(
+        () =>
+            mockVerifyDeviceUseCase(challengeId: 'device_001', code: '654321'),
+      ).thenAnswer((_) => completer.future);
+
+      when(
+        () => mockSessionManager.setSession(session),
+      ).thenAnswer((_) async {});
+
+      await authCubit.login(credentials);
+      await authCubit.verifyOtp('123456');
+
+      final verificationFuture = authCubit.verifyDevice('654321');
+
+      refreshFailureController.add(null);
+
+      await pumpEventQueue();
+
+      expect(authCubit.state, isA<AuthUnauthenticated>());
+
+      completer.complete(AuthSuccess(session: session));
+
+      await verificationFuture;
+
+      expect(authCubit.state, isA<AuthAuthenticated>());
+
+      verify(() => mockSessionManager.setSession(session)).called(1);
+    },
+  );
+
+  test(
+    'does not restore device verification state after refresh failure',
+    () async {
+      final completer = Completer<AuthResult>();
+
+      when(
+        () => mockLoginUseCase(credentials),
+      ).thenAnswer((_) async => otpChallenge);
+
+      when(
+        () =>
+            mockVerifyOtpUseCase(challengeId: 'challenge_001', code: '123456'),
+      ).thenAnswer(
+        (_) async => DeviceVerificationRequired(challenge: deviceChallenge),
+      );
+
+      when(
+        () =>
+            mockVerifyDeviceUseCase(challengeId: 'device_001', code: '654321'),
+      ).thenAnswer((_) => completer.future);
+
+      await authCubit.login(credentials);
+      await authCubit.verifyOtp('123456');
+
+      final verificationFuture = authCubit.verifyDevice('654321');
+
+      refreshFailureController.add(null);
+
+      await pumpEventQueue();
+
+      completer.completeError(Exception('Verification failed'));
+
+      await verificationFuture;
+
+      expect(authCubit.state, isA<AuthUnauthenticated>());
+
+      verifyNever(() => mockSessionManager.setSession(session));
+    },
+  );
+
+  test('does not restore OTP state after refresh failure', () async {
+    final completer = Completer<AuthResult>();
+
+    when(
+      () => mockLoginUseCase(credentials),
+    ).thenAnswer((_) async => otpChallenge);
+
+    when(
+      () => mockVerifyOtpUseCase(challengeId: 'challenge_001', code: '123456'),
+    ).thenAnswer((_) => completer.future);
+
+    await authCubit.login(credentials);
+
+    final verificationFuture = authCubit.verifyOtp('123456');
+
+    refreshFailureController.add(null);
+
+    await pumpEventQueue();
+
+    completer.completeError(Exception('OTP verification failed'));
+
+    await verificationFuture;
+
+    expect(authCubit.state, isA<AuthUnauthenticated>());
+  });
+
+  test(
+    'does not restore authenticated state when user logs out while refresh is in-flight',
+    () async {
+      final expiredSession = Session(
+        accessToken: 'expired_access_token',
+        refreshToken: 'mock_refresh_token_001',
+        expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+
+      final refreshCompleter = Completer<Session>();
+
+      when(() => mockSessionManager.currentSession).thenReturn(expiredSession);
+
+      when(
+        () => mockSessionManager.refreshSession(),
+      ).thenAnswer((_) => refreshCompleter.future);
+
+      when(() => mockSessionManager.logout()).thenAnswer((_) async {});
+
+      final restoreFuture = authCubit.restoreSession();
+
+      expect(authCubit.state, isA<AuthLoading>());
+
+      await authCubit.logout();
+
+      expect(authCubit.state, isA<AuthUnauthenticated>());
+
+      refreshCompleter.complete(session);
+      await restoreFuture;
+
+      expect(authCubit.state, isA<AuthUnauthenticated>());
+      expect(authCubit.state, isNot(isA<AuthAuthenticated>()));
+
+      verify(() => mockSessionManager.logout()).called(1);
+    },
+  );
 }

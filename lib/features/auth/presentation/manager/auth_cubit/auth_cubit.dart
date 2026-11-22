@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auth_notification_app/features/auth/domain/entities/device_verification_challenge.dart';
 import 'package:auth_notification_app/features/auth/domain/entities/otp_challenge.dart';
 import 'package:auth_notification_app/features/auth/presentation/manager/auth_cubit/auth_state.dart';
@@ -17,13 +19,29 @@ class AuthCubit extends Cubit<AuthState> {
   OtpChallenge? _otpChallenge;
   DeviceVerificationChallenge? _deviceChallenge;
   bool _isProcessing = false;
+  late final StreamSubscription<void> _refreshFailureSubscription;
 
   AuthCubit({
     required this.loginUseCase,
     required this.verifyOtpUseCase,
     required this.verifyDeviceUseCase,
     required this.sessionManager,
-  }) : super(const AuthInitial());
+  }) : super(const AuthInitial()) {
+    _refreshFailureSubscription = sessionManager.onRefreshFailure.listen((_) {
+      if (isClosed) return;
+
+      _otpChallenge = null;
+      _deviceChallenge = null;
+
+      emit(const AuthUnauthenticated());
+    });
+  }
+
+  @override
+  Future<void> close() async {
+    await _refreshFailureSubscription.cancel();
+    await super.close();
+  }
 
   Future<void> restoreSession() async {
     if (_isProcessing) return;
@@ -44,7 +62,7 @@ class AuthCubit extends Cubit<AuthState> {
         await sessionManager.refreshSession();
       }
 
-      if (isClosed) return;
+      if (isClosed || state is AuthUnauthenticated) return;
 
       emit(const AuthAuthenticated());
     } catch (_) {
@@ -103,7 +121,7 @@ class AuthCubit extends Cubit<AuthState> {
           code: code,
         );
       } catch (_) {
-        if (!isClosed) {
+        if (!isClosed && _otpChallenge == challenge) {
           emit(
             AuthOtpRequired(
               challenge,
@@ -158,7 +176,7 @@ class AuthCubit extends Cubit<AuthState> {
           code: code,
         );
       } catch (_) {
-        if (!isClosed) {
+        if (!isClosed && _deviceChallenge == challenge) {
           emit(
             AuthDeviceVerificationRequired(
               challenge,
@@ -201,26 +219,18 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> logout() async {
-    if (_isProcessing) return;
-
-    _isProcessing = true;
+    _isProcessing = false;
     emit(const AuthLoading());
 
     try {
       await sessionManager.logout();
-
       _otpChallenge = null;
       _deviceChallenge = null;
-
-      if (!isClosed) {
-        emit(const AuthUnauthenticated());
-      }
+      if (!isClosed) emit(const AuthUnauthenticated());
     } catch (_) {
       if (!isClosed) {
         emit(const AuthFailure('Logout failed. Please try again.'));
       }
-    } finally {
-      _isProcessing = false;
     }
   }
 }
