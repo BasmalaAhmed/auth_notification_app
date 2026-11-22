@@ -1,6 +1,11 @@
 import 'package:auth_notification_app/core/session/session_manager.dart';
+import 'package:auth_notification_app/core/utils/date_formatter.dart';
 import 'package:auth_notification_app/features/auth/presentation/manager/auth_cubit/auth_cubit.dart';
 import 'package:auth_notification_app/features/auth/presentation/manager/auth_cubit/auth_state.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/info_card.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/mock_deep_link_button.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/status_card.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/welcome_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -16,11 +21,9 @@ class HomeView extends StatelessWidget {
 
   static const Color primaryColor = Color(0xFF1E293B);
   static const Color accentColor = Color(0xFF0D9488);
-
   @override
   Widget build(BuildContext context) {
     final session = sessionManager.currentSession;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -49,10 +52,8 @@ class HomeView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildWelcomeSection(),
-
+              WelcomeSection(),
               const SizedBox(height: 28),
-
               const Text(
                 'Account Overview',
                 style: TextStyle(
@@ -61,13 +62,9 @@ class HomeView extends StatelessWidget {
                   color: primaryColor,
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              _buildStatusCard(),
-
+              StatusCard(isSessionValid: sessionManager.hasValidSession),
               const SizedBox(height: 24),
-
               const Text(
                 'Session Information',
                 style: TextStyle(
@@ -76,227 +73,48 @@ class HomeView extends StatelessWidget {
                   color: primaryColor,
                 ),
               ),
-
               const SizedBox(height: 16),
-
               if (session != null) ...[
-                _buildInfoCard(
-                  icon: Icons.access_time_rounded,
+                InfoCard(
                   title: 'Session Expires At',
-                  value: _formatDate(session.expiresAt),
+                  value: formatDate(session.expiresAt),
+                  icon: Icons.access_time_rounded,
                 ),
-
                 const SizedBox(height: 12),
-
-                _buildInfoCard(
-                  icon: Icons.key_rounded,
+                InfoCard(
                   title: 'Access Token',
                   value: 'Available',
+                  icon: Icons.key_rounded,
                 ),
-
                 const SizedBox(height: 12),
-
-                _buildInfoCard(
-                  icon: Icons.lock_outline_rounded,
+                InfoCard(
                   title: 'Refresh Token',
                   value: 'Secured',
+                  icon: Icons.lock_outline_rounded,
                 ),
               ] else
                 const Text('No active session found.'),
-
               const SizedBox(height: 28),
-
-              _buildMockDeepLinkButton(context),
+              MockDeepLinkButton(
+                onPressed: () {
+                  final accepted = onDeepLink(
+                    Uri.parse('myapp://approval/request_001'),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        accepted
+                            ? 'Approval link received.'
+                            : 'Invalid approval link.',
+                      ),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Widget _buildWelcomeSection() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: primaryColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.waving_hand_rounded, color: Color(0xFFFBBF24), size: 32),
-          SizedBox(height: 16),
-          Text(
-            'Welcome Back!',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 25,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            "You're successfully authenticated.",
-            style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard() {
-    final isSessionValid = sessionManager.hasValidSession;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.verified_user_outlined,
-              color: accentColor,
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Authentication Status',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Authenticated',
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _buildStatusBadge(
-            isSessionValid ? 'Active' : 'Expired',
-            isSessionValid,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(String label, bool isActive) {
-    final color = isActive ? accentColor : const Color(0xFFDC2626);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: accentColor, size: 24),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: primaryColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMockDeepLinkButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          final accepted = onDeepLink(
-            Uri.parse('myapp://approval/request_001'),
-          );
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                accepted ? 'Approval link received.' : 'Invalid approval link.',
-              ),
-            ),
-          );
-        },
-        icon: const Icon(Icons.notifications_active_outlined),
-        label: const Text('Simulate Approval Notification'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accentColor,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    final localDate = date.toLocal();
-
-    return '${localDate.day.toString().padLeft(2, '0')}/'
-        '${localDate.month.toString().padLeft(2, '0')}/'
-        '${localDate.year} - '
-        '${localDate.hour.toString().padLeft(2, '0')}:'
-        '${localDate.minute.toString().padLeft(2, '0')}';
   }
 }

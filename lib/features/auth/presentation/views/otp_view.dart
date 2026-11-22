@@ -1,3 +1,7 @@
+import 'package:auth_notification_app/features/auth/presentation/widgets/code_text_field.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/error_message.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/icon_widget.dart';
+import 'package:auth_notification_app/features/auth/presentation/widgets/verify_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -8,10 +12,7 @@ import 'package:auth_notification_app/features/auth/presentation/manager/auth_cu
 class OtpView extends StatefulWidget {
   final OtpChallenge challenge;
 
-  const OtpView({
-    super.key,
-    required this.challenge,
-  });
+  const OtpView({super.key, required this.challenge});
 
   @override
   State<OtpView> createState() => _OtpViewState();
@@ -35,9 +36,7 @@ class _OtpViewState extends State<OtpView> {
 
     FocusScope.of(context).unfocus();
 
-    context.read<AuthCubit>().verifyOtp(
-          _codeController.text,
-        );
+    context.read<AuthCubit>().verifyOtp(_codeController.text);
   }
 
   @override
@@ -53,11 +52,9 @@ class _OtpViewState extends State<OtpView> {
               child: BlocBuilder<AuthCubit, AuthState>(
                 builder: (context, state) {
                   final isLoading = state is AuthLoading;
-
                   final errorMessage = state is AuthOtpRequired
                       ? state.errorMessage
                       : null;
-
                   return Container(
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
@@ -76,10 +73,8 @@ class _OtpViewState extends State<OtpView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _buildIcon(),
-
+                          IconWidget(icon: Icons.mark_email_read_outlined),
                           const SizedBox(height: 28),
-
                           const Text(
                             'Verify Your Email',
                             textAlign: TextAlign.center,
@@ -89,9 +84,7 @@ class _OtpViewState extends State<OtpView> {
                               color: primaryColor,
                             ),
                           ),
-
                           const SizedBox(height: 12),
-
                           const Text(
                             'We have sent a verification code to',
                             textAlign: TextAlign.center,
@@ -100,9 +93,7 @@ class _OtpViewState extends State<OtpView> {
                               color: Color(0xFF64748B),
                             ),
                           ),
-
                           const SizedBox(height: 6),
-
                           Text(
                             widget.challenge.maskedDestination,
                             textAlign: TextAlign.center,
@@ -112,19 +103,21 @@ class _OtpViewState extends State<OtpView> {
                               color: accentColor,
                             ),
                           ),
-
                           const SizedBox(height: 36),
-
-                          _buildOtpField(isLoading),
-
+                          CodeTextField(
+                            codeController: _codeController,
+                            isLoading: isLoading,
+                          ),
                           if (errorMessage != null) ...[
                             const SizedBox(height: 16),
-                            _buildErrorMessage(errorMessage),
+                            ErrorMessage(message: errorMessage),
                           ],
-
                           const SizedBox(height: 28),
-
-                          _buildVerifyButton(isLoading),
+                          VerifyButton(
+                            isLoading: isLoading,
+                            onPressed: _verifyOtp,
+                            title: 'Verify Code',
+                          ),
                         ],
                       ),
                     ),
@@ -134,131 +127,6 @@ class _OtpViewState extends State<OtpView> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildIcon() {
-    return Center(
-      child: Container(
-        width: 76,
-        height: 76,
-        decoration: BoxDecoration(
-          color: accentColor.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: const Icon(
-          Icons.mark_email_read_outlined,
-          size: 38,
-          color: accentColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOtpField(bool isLoading) {
-    return TextFormField(
-      controller: _codeController,
-      enabled: !isLoading,
-      keyboardType: TextInputType.number,
-      textAlign: TextAlign.center,
-      maxLength: 6,
-      style: const TextStyle(
-        fontSize: 28,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 14,
-        color: primaryColor,
-      ),
-      decoration: InputDecoration(
-        hintText: '000000',
-        hintStyle: const TextStyle(
-          color: Color(0xFFCBD5E1),
-          letterSpacing: 8,
-        ),
-        counterText: '',
-        filled: true,
-        fillColor: const Color(0xFFF8FAFC),
-        contentPadding: const EdgeInsets.symmetric(vertical: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Color(0xFFE2E8F0),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Color(0xFFE2E8F0),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: accentColor,
-            width: 1.5,
-          ),
-        ),
-      ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter the verification code.';
-        }
-
-        if (value.length != 6) {
-          return 'The code must contain 6 digits.';
-        }
-
-        return null;
-      },
-    );
-  }
-
-  Widget _buildErrorMessage(String message) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        message,
-        style: const TextStyle(
-          fontSize: 13,
-          color: Color(0xFFDC2626),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVerifyButton(bool isLoading) {
-    return SizedBox(
-      height: 54,
-      child: ElevatedButton(
-        onPressed: isLoading ? null : _verifyOtp,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : const Text(
-                'Verify Code',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
       ),
     );
   }
