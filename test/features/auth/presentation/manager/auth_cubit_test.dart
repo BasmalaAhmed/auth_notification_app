@@ -201,7 +201,12 @@ void main() {
 
       await authCubit.verifyOtp('123456');
 
-      expect(authCubit.state, isA<AuthFailure>());
+      expect(authCubit.state, isA<AuthOtpRequired>());
+
+      final state = authCubit.state as AuthOtpRequired;
+
+      expect(state.challenge, otpChallenge);
+      expect(state.errorMessage, 'OTP verification failed.');
 
       await authCubit.verifyOtp('123456');
 
@@ -352,7 +357,12 @@ void main() {
 
       await authCubit.verifyDevice('654321');
 
-      expect(authCubit.state, isA<AuthFailure>());
+      expect(authCubit.state, isA<AuthDeviceVerificationRequired>());
+
+      final state = authCubit.state as AuthDeviceVerificationRequired;
+
+      expect(state.challenge, deviceChallenge);
+      expect(state.errorMessage, 'Device verification failed.');
 
       await authCubit.verifyDevice('654321');
 

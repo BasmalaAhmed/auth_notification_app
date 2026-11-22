@@ -95,24 +95,42 @@ class AuthCubit extends Cubit<AuthState> {
     emit(const AuthLoading());
 
     try {
-      final result = await verifyOtpUseCase(
-        challengeId: challenge.challengeId,
-        code: code,
-      );
+      AuthResult result;
+
+      // First: Verify OTP.
+      try {
+        result = await verifyOtpUseCase(
+          challengeId: challenge.challengeId,
+          code: code,
+        );
+      } catch (_) {
+        if (!isClosed) {
+          emit(
+            AuthOtpRequired(
+              challenge,
+              errorMessage: 'OTP verification failed.',
+            ),
+          );
+        }
+        return;
+      }
 
       if (isClosed) return;
 
+      // Second: Handle verification result.
       if (result is DeviceVerificationRequired) {
         _deviceChallenge = result.challenge;
         _otpChallenge = null;
 
         emit(AuthDeviceVerificationRequired(result.challenge));
       } else if (result is AuthSuccess) {
-        await _completeAuthentication(result);
-      }
-    } catch (_) {
-      if (!isClosed) {
-        emit(const AuthFailure('OTP verification failed.'));
+        try {
+          await _completeAuthentication(result);
+        } catch (_) {
+          if (!isClosed) {
+            emit(const AuthFailure('Failed to save session.'));
+          }
+        }
       }
     } finally {
       _isProcessing = false;
@@ -134,23 +152,41 @@ class AuthCubit extends Cubit<AuthState> {
     emit(const AuthLoading());
 
     try {
-      final result = await verifyDeviceUseCase(
-        challengeId: challenge.challengeId,
-        code: code,
-      );
+      AuthResult result;
+
+      // First: Verify device code.
+      try {
+        result = await verifyDeviceUseCase(
+          challengeId: challenge.challengeId,
+          code: code,
+        );
+      } catch (_) {
+        if (!isClosed) {
+          emit(
+            AuthDeviceVerificationRequired(
+              challenge,
+              errorMessage: 'Device verification failed.',
+            ),
+          );
+        }
+        return;
+      }
 
       if (isClosed) return;
 
+      // Second: Handle successful verification.
       if (result is AuthSuccess) {
-        await _completeAuthentication(result);
+        try {
+          await _completeAuthentication(result);
+        } catch (_) {
+          if (!isClosed) {
+            emit(const AuthFailure('Failed to save session.'));
+          }
+        }
       } else if (result is DeviceVerificationRequired) {
         _deviceChallenge = result.challenge;
 
         emit(AuthDeviceVerificationRequired(result.challenge));
-      }
-    } catch (_) {
-      if (!isClosed) {
-        emit(const AuthFailure('Device verification failed.'));
       }
     } finally {
       _isProcessing = false;

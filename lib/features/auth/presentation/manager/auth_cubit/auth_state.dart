@@ -19,14 +19,22 @@ class AuthUnauthenticated extends AuthState {
 
 class AuthOtpRequired extends AuthState {
   final OtpChallenge challenge;
+  final String? errorMessage;
 
-  const AuthOtpRequired(this.challenge);
+  const AuthOtpRequired(
+    this.challenge, {
+    this.errorMessage,
+  });
 }
 
 class AuthDeviceVerificationRequired extends AuthState {
   final DeviceVerificationChallenge challenge;
+  final String? errorMessage;
 
-  const AuthDeviceVerificationRequired(this.challenge);
+  const AuthDeviceVerificationRequired(
+    this.challenge, {
+    this.errorMessage,
+  });
 }
 
 class AuthAuthenticated extends AuthState {
