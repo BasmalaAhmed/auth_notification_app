@@ -13,6 +13,7 @@ import 'package:auth_notification_app/features/auth/presentation/manager/auth_cu
 import 'package:auth_notification_app/features/notifications/data/datasources/mock_approval_api.dart';
 import 'package:auth_notification_app/features/notifications/data/repos/approval_request_repo_impl.dart';
 import 'package:auth_notification_app/features/notifications/domain/usecases/get_approval_request_usecase.dart';
+import 'package:auth_notification_app/features/notifications/presentation/manager/approval_coordinator/approval_cubit.dart';
 import 'package:auth_notification_app/features/notifications/presentation/manager/pending_approval_manager.dart';
 
 class AppDependencies {
@@ -38,22 +39,15 @@ class AppDependencies {
   static Future<AppDependencies> create() async {
     final secureStorageService = SecureStorageService();
 
- 
     final sessionRepo = SessionRepoImpl(secureStorageService);
 
     final mockSessionApi = MockSessionApi();
 
-    final sessionRefreshRepo = SessionRefreshRepoImpl(
-      mockSessionApi,
-    );
+    final sessionRefreshRepo = SessionRefreshRepoImpl(mockSessionApi);
 
-    final sessionManager = SessionManager(
-      sessionRepo,
-      sessionRefreshRepo,
-    );
+    final sessionManager = SessionManager(sessionRepo, sessionRefreshRepo);
 
     await sessionManager.initialize();
-
 
     final mockAuthApi = MockAuthApi();
 
@@ -63,10 +57,7 @@ class AppDependencies {
     final verifyOtpUseCase = VerifyOtpUseCase(authRepo);
     final verifyDeviceUseCase = VerifyDeviceUseCase(authRepo);
 
-
-    final apiRequestExecutor = ApiRequestExecutor(
-      sessionManager,
-    );
+    final apiRequestExecutor = ApiRequestExecutor(sessionManager);
 
     final mockApprovalApi = MockApprovalApi();
 
@@ -96,5 +87,9 @@ class AppDependencies {
       verifyDeviceUseCase: verifyDeviceUseCase,
       sessionManager: sessionManager,
     );
+  }
+
+  ApprovalCubit createApprovalCubit() {
+    return ApprovalCubit(getApprovalRequestUseCase: getApprovalRequestUseCase);
   }
 }
